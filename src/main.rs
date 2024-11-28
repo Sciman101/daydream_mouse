@@ -4,10 +4,10 @@ use btleplug::api::{
 };
 use enigo::{
     Button,
-    Direction::{Click, Press, Release},
+    Direction::{Press, Release},
     Enigo, Mouse, Settings,
-    {Axis::Horizontal, Axis::Vertical},
-    {Coordinate::Abs, Coordinate::Rel},
+    {Coordinate::Rel},
+    {Axis::Vertical},
     Key, Keyboard
 };
 use btleplug::platform::{Adapter, Manager, Peripheral};
@@ -16,6 +16,7 @@ use std::process;
 use std::time::Duration;
 use futures_util::StreamExt;
 use uuid::Uuid;
+use std::f64::consts::PI;
 
 // Filter for Daydream controller event
 const CONTROLLER_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0x00000001_1000_1000_8000_00805f9b34fb);
@@ -133,22 +134,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Track previous controller state
     let mut prev_data = DaydreamControllerData::default();
+    let mut scroll_mode = false;
+    let mut prev_angle = 0.0;
 
     while let Some(packet) = notification_stream.next().await {
         if let Some(data) = parse_raw_controller_data(packet.value) {
             
-            // Touchpad - mouse motion
             if data.touch_down && prev_data.touch_down {
+            if !scroll_mode {
+                // Touchpad - mouse motion
                 let mut x_delta = (data.touchpad_x as i32) - (prev_data.touchpad_x as i32);
                 let mut y_delta = (data.touchpad_y as i32) - (prev_data.touchpad_y as i32);
                 x_delta = ((x_delta as f64) * MOUSE_SCALE) as i32;
                 y_delta = ((y_delta as f64) * MOUSE_SCALE) as i32;
                 enigo.move_mouse(x_delta, y_delta, Rel).unwrap();
+            }else{
+                let xoff = (data.touchpad_x as f64) - 128.0;
+                let yoff = (data.touchpad_y as f64) - 128.0;
+                let angle = yoff.atan2(xoff);
+                let mut angle_diff = prev_angle - angle;
+                angle_diff = ((angle_diff + PI) as f64).rem_euclid(PI * 2.0) - PI;
+                if angle_diff.abs() > 0.1 {
+                    prev_angle = angle;
+                    enigo.scroll(if angle_diff > 0.0 {1} else {-1}, Vertical);
+                }
             }
+        }
 
             // Touchpad - left mouse button
             if data.touch_click && !prev_data.touch_click {
                 enigo.button(Button::Left, Press).unwrap();
+                scroll_mode = false;
             }else if !data.touch_click && prev_data.touch_click {
                 enigo.button(Button::Left, Release).unwrap();
             }
@@ -160,11 +176,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 enigo.button(Button::Right, Release).unwrap();
             }
 
-            // Home button - command/windows/super key
-            enigo_key_wrapper(&mut enigo, data.home, prev_data.home, Key::Command);
-            // Volume control
-            enigo_key_wrapper(&mut enigo, data.vol_up, prev_data.vol_up, Key::VolumeUp);
-            enigo_key_wrapper(&mut enigo, data.vol_down, prev_data.vol_down, Key::VolumeDown);
+            // Home button - enable scroll mode
+            if data.home && !prev_data.home {
+                scroll_mode = !scroll_mode;
+            }
+
+            // Volume Down - command/windows/super key
+            enigo_key_wrapper(&mut enigo, data.vol_down, prev_data.vol_down, Key::Meta);
+            // Volume Up - Escape
+            enigo_key_wrapper(&mut enigo, data.vol_up, prev_data.vol_up, Key::Escape);
 
             prev_data = data;
         }

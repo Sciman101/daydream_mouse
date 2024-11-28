@@ -16,7 +16,10 @@ Huge shoutout to [Matteo P. and this article](https://medium.com/hackernoon/how-
 - Touchpad - Move mouse
 - Touchpad Click - Left Click
 - App Button - Right Click
-- Home Button - Windows/Command/Super Key
-- Volume Buttons - Volume Up/Down
+- Home Button - Toggle Scroll Mode
+    - While in scroll mode, iPod style circular scrolling on the touchpad scrolls the mouse.
+    - Click home or the touchpad again to exit.
+- Volume Up - Escape
+- Volume Down - Meta/Command/Windows/Super Key
 
 The IMU is currently ignored because I didn't want to have to figure out how to filter the motion data and get it working.
